@@ -1,0 +1,6 @@
+{
+  "name": "SPARKVERSE - 3D Cosmic Arcade Gaming Platform",
+  "description": "One More Adventure. Your Next High Score. Play Spark Rush in 3D with procedural runs, daily challenges, achievements, and cross-platform multiplayer.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
