@@ -18,7 +18,10 @@ import { SettingsModal } from './components/SettingsModal.tsx';
 import { SubscriptionModal } from './components/SubscriptionModal.tsx';
 import { AdminModal } from './components/AdminModal.tsx';
 import { TutorialModal } from './components/TutorialModal.tsx';
+import { ProfileModal } from './components/ProfileModal.tsx';
 import { useGameStore } from './stores/useGameStore.ts';
+import { useUserStore } from './stores/useUserStore.ts';
+import { apiClient } from './services/apiClient.ts';
 
 export default function App() {
   const [isModesOpen, setIsModesOpen] = useState(false);
@@ -29,10 +32,11 @@ export default function App() {
   const [isSubscriptionOpen, setIsSubscriptionOpen] = useState(false);
   const [isAdminOpen, setIsAdminOpen] = useState(false);
   const [isTutorialOpen, setIsTutorialOpen] = useState(false);
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
 
   const { status, pauseGame, resumeGame } = useGameStore();
 
-  // Load saved high score on initial mount
+  // Load saved high score and cloud save on initial mount
   useEffect(() => {
     try {
       const savedHigh = localStorage.getItem('sparkverse_highscore');
@@ -42,6 +46,22 @@ export default function App() {
         }));
       }
     } catch {}
+
+    // Restore from Cloud Save
+    const profile = useUserStore.getState().profile;
+    apiClient.fetchCloudSave(profile.id).then((cloud) => {
+      if (cloud?.stats) {
+        useGameStore.setState((s) => ({
+          stats: {
+            ...s.stats,
+            highScore: Math.max(s.stats.highScore, cloud.stats.highScore || 0),
+            level: cloud.stats.level || s.stats.level,
+            xp: cloud.stats.xp || s.stats.xp,
+            sparkCoins: cloud.stats.sparkCoins || s.stats.sparkCoins,
+          },
+        }));
+      }
+    });
   }, []);
 
   // Keyboard shortcut listener for cinema mode / pause
@@ -62,7 +82,10 @@ export default function App() {
       <SparkRushCanvas />
 
       {/* Persistent minimal branding header */}
-      <HeaderBanner onOpenSettings={() => setIsSettingsOpen(true)} />
+      <HeaderBanner
+        onOpenSettings={() => setIsSettingsOpen(true)}
+        onOpenProfile={() => setIsProfileOpen(true)}
+      />
 
       {/* Idle / Welcome Hub */}
       <WelcomeScreen onOpenTutorial={() => setIsTutorialOpen(true)} />
@@ -93,6 +116,7 @@ export default function App() {
       <SubscriptionModal isOpen={isSubscriptionOpen} onClose={() => setIsSubscriptionOpen(false)} />
       <AdminModal isOpen={isAdminOpen} onClose={() => setIsAdminOpen(false)} />
       <TutorialModal isOpen={isTutorialOpen} onClose={() => setIsTutorialOpen(false)} />
+      <ProfileModal isOpen={isProfileOpen} onClose={() => setIsProfileOpen(false)} />
     </div>
   );
 }

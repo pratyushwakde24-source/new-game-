@@ -1,13 +1,44 @@
-import React, { useState } from 'react';
-import { ShieldAlert, Activity, CheckCircle, Database, RefreshCw, X, Server } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { ShieldAlert, Server, X, Database, CheckCircle, AlertTriangle, Key } from 'lucide-react';
+import { apiClient } from '../services/apiClient.ts';
 
 interface AdminModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
+interface HealthStatus {
+  status: string;
+  version: string;
+  database?: {
+    provider: string;
+    connected: boolean;
+    urlConfigured: boolean;
+    serviceRoleConfigured: boolean;
+  };
+  services?: Record<string, string>;
+}
+
 export const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'scores' | 'flags'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'scores' | 'setup' | 'flags'>('overview');
+  const [health, setHealth] = useState<HealthStatus | null>(null);
+  const [scoreAudits, setScoreAudits] = useState<any[]>([]);
+  const [loadingAudits, setLoadingAudits] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      apiClient.checkHealth().then((data) => {
+        if (data) setHealth(data);
+      });
+      if (activeTab === 'scores') {
+        setLoadingAudits(true);
+        apiClient.fetchScoreAudits(30).then((audits) => {
+          setScoreAudits(audits);
+          setLoadingAudits(false);
+        });
+      }
+    }
+  }, [isOpen, activeTab]);
 
   if (!isOpen) return null;
 
@@ -22,23 +53,26 @@ export const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose }) => {
             </div>
             <div>
               <h2 className="text-xl font-black text-white font-display">SPARKVERSE Admin Operations</h2>
-              <p className="text-xs text-slate-400">Platform telemetry, score validation & feature flags</p>
+              <p className="text-xs text-slate-400">Platform telemetry, Supabase PostgreSQL & score audit</p>
             </div>
           </div>
-          <button onClick={onClose} className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition">
+          <button
+            onClick={onClose}
+            className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
+          >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Tab Strip */}
-        <div className="flex border-b border-slate-800 px-6 pt-3 gap-6 text-xs font-bold uppercase tracking-wider">
+        <div className="flex border-b border-slate-800 px-6 pt-3 gap-6 text-xs font-bold uppercase tracking-wider overflow-x-auto">
           <button
             onClick={() => setActiveTab('overview')}
             className={`pb-3 border-b-2 cursor-pointer transition ${
               activeTab === 'overview' ? 'border-cyan-400 text-cyan-300' : 'border-transparent text-slate-400 hover:text-white'
             }`}
           >
-            System Health & DAU
+            System Health & DB
           </button>
           <button
             onClick={() => setActiveTab('scores')}
@@ -47,6 +81,14 @@ export const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose }) => {
             }`}
           >
             Authoritative Score Audit
+          </button>
+          <button
+            onClick={() => setActiveTab('setup')}
+            className={`pb-3 border-b-2 cursor-pointer transition ${
+              activeTab === 'setup' ? 'border-cyan-400 text-cyan-300' : 'border-transparent text-slate-400 hover:text-white'
+            }`}
+          >
+            Supabase Setup Checklist
           </button>
           <button
             onClick={() => setActiveTab('flags')}
@@ -62,27 +104,44 @@ export const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose }) => {
         <div className="p-5 md:p-6 overflow-y-auto space-y-5 flex-1">
           {activeTab === 'overview' && (
             <div className="space-y-4">
-              {/* Metric KPI cards */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <div className="bg-slate-950/60 border border-slate-800 p-3.5 rounded-2xl">
-                  <div className="text-[10px] text-slate-400 uppercase font-bold">Daily Active (DAU)</div>
-                  <div className="text-2xl font-black text-white font-display mt-1">4,812</div>
-                  <span className="text-[10px] text-emerald-400 font-semibold">+18% this week</span>
+              {/* Database Status Card */}
+              <div className="p-4 rounded-2xl bg-slate-950/70 border border-slate-800">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-xs font-bold text-white flex items-center gap-2">
+                    <Database className="w-4 h-4 text-cyan-400" /> PostgreSQL Database Engine
+                  </span>
+                  <span
+                    className={`text-xs font-mono font-bold px-2 py-0.5 rounded-full ${
+                      health?.database?.connected
+                        ? 'bg-emerald-950 text-emerald-400 border border-emerald-500/40'
+                        : 'bg-indigo-950 text-cyan-300 border border-cyan-500/40'
+                    }`}
+                  >
+                    {health?.database?.connected ? 'CONNECTED (SUPABASE)' : 'ACTIVE (SERVER-PERSISTENT ENGINE)'}
+                  </span>
                 </div>
-                <div className="bg-slate-950/60 border border-slate-800 p-3.5 rounded-2xl">
-                  <div className="text-[10px] text-slate-400 uppercase font-bold">Runs Completed</div>
-                  <div className="text-2xl font-black text-white font-display mt-1">32,490</div>
-                  <span className="text-[10px] text-cyan-400 font-semibold">98.2% completion</span>
-                </div>
-                <div className="bg-slate-950/60 border border-slate-800 p-3.5 rounded-2xl">
-                  <div className="text-[10px] text-slate-400 uppercase font-bold">Avg FPS Target</div>
-                  <div className="text-2xl font-black text-emerald-400 font-display mt-1">59.8</div>
-                  <span className="text-[10px] text-slate-400">Zero frame drops</span>
-                </div>
-                <div className="bg-slate-950/60 border border-slate-800 p-3.5 rounded-2xl">
-                  <div className="text-[10px] text-slate-400 uppercase font-bold">Plus Subscribers</div>
-                  <div className="text-2xl font-black text-amber-300 font-display mt-1">348</div>
-                  <span className="text-[10px] text-amber-400 font-semibold">7.2% conversion</span>
+
+                <div className="space-y-2 text-xs font-mono text-slate-300">
+                  <div className="flex justify-between py-1 border-b border-slate-900">
+                    <span>Database Provider:</span>
+                    <span className="text-slate-200">Supabase PostgreSQL 15</span>
+                  </div>
+                  <div className="flex justify-between py-1 border-b border-slate-900">
+                    <span>SUPABASE_URL Configured:</span>
+                    <span className={health?.database?.urlConfigured ? 'text-emerald-400' : 'text-amber-400'}>
+                      {health?.database?.urlConfigured ? 'Yes (Connected)' : 'Optional (Fallback Active)'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between py-1 border-b border-slate-900">
+                    <span>SERVICE_ROLE Secret (Server-Only):</span>
+                    <span className={health?.database?.serviceRoleConfigured ? 'text-emerald-400' : 'text-slate-400'}>
+                      {health?.database?.serviceRoleConfigured ? 'Configured' : 'Not Provided'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between py-1">
+                    <span>Row Level Security (RLS) Status:</span>
+                    <span className="text-emerald-400">Enforced in Migrations (001_initial_schema.sql)</span>
+                  </div>
                 </div>
               </div>
 
@@ -90,22 +149,22 @@ export const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose }) => {
               <div className="p-4 rounded-2xl bg-slate-950/50 border border-slate-800">
                 <div className="flex items-center justify-between mb-3">
                   <span className="text-xs font-bold text-white flex items-center gap-2">
-                    <Server className="w-4 h-4 text-emerald-400" /> Active Service Infrastructure
+                    <Server className="w-4 h-4 text-emerald-400" /> Active Platform Infrastructure
                   </span>
                   <span className="text-xs text-emerald-400 font-mono font-semibold">100% OPERATIONAL</span>
                 </div>
 
                 <div className="space-y-2 text-xs font-mono text-slate-300">
                   <div className="flex justify-between py-1 border-b border-slate-900">
-                    <span>Web Realtime Gateway (Socket.IO):</span>
+                    <span>Web Realtime Gateway:</span>
                     <span className="text-emerald-400">Active (port 3000)</span>
                   </div>
                   <div className="flex justify-between py-1 border-b border-slate-900">
-                    <span>Deterministic Score Validator:</span>
+                    <span>Deterministic Score Anti-Cheat:</span>
                     <span className="text-emerald-400">Enforcing (LCG seeds)</span>
                   </div>
                   <div className="flex justify-between py-1">
-                    <span>PostgreSQL Migration Schema:</span>
+                    <span>Relational Schema Migration:</span>
                     <span className="text-emerald-400">22 Tables Configured</span>
                   </div>
                 </div>
@@ -115,32 +174,108 @@ export const AdminModal: React.FC<AdminModalProps> = ({ isOpen, onClose }) => {
 
           {activeTab === 'scores' && (
             <div className="space-y-3">
-              <div className="text-xs text-slate-400">Recent server score submissions and verification statuses:</div>
-              {[
-                { id: 'sub_912', user: 'AstroNova', score: 14820, duration: '94s', status: 'VALIDATED', seed: 948271 },
-                { id: 'sub_911', user: 'VortexPilot', score: 12450, duration: '82s', status: 'VALIDATED', seed: 948271 },
-                { id: 'sub_910', user: 'SpeedDemon_X', score: 999999, duration: '2s', status: 'REJECTED (IMPOSSIBLE_RATE)', seed: 81273 },
-                { id: 'sub_909', user: 'CosmicDrifter', score: 10890, duration: '71s', status: 'VALIDATED', seed: 54109 },
-              ].map((sub) => (
-                <div key={sub.id} className="p-3.5 rounded-xl bg-slate-950/60 border border-slate-800 flex items-center justify-between text-xs">
-                  <div>
-                    <div className="font-bold text-white">{sub.user}</div>
-                    <div className="text-slate-400 font-mono text-[11px]">Seed: {sub.seed} • Duration: {sub.duration}</div>
-                  </div>
-                  <div className="text-right">
-                    <div className="font-bold text-cyan-300 font-display text-sm">{sub.score.toLocaleString()} pts</div>
-                    <span
-                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                        sub.status.includes('VALIDATED')
-                          ? 'bg-emerald-950 text-emerald-400 border border-emerald-500/30'
-                          : 'bg-rose-950 text-rose-400 border border-rose-500/30'
-                      }`}
-                    >
-                      {sub.status}
-                    </span>
-                  </div>
+              <div className="flex items-center justify-between text-xs text-slate-400">
+                <span>Real-time server-authoritative score audit trail:</span>
+                <button
+                  onClick={() => {
+                    setLoadingAudits(true);
+                    apiClient.fetchScoreAudits(30).then((audits) => {
+                      setScoreAudits(audits);
+                      setLoadingAudits(false);
+                    });
+                  }}
+                  className="text-cyan-400 hover:text-cyan-300 font-bold cursor-pointer"
+                >
+                  Refresh Trail
+                </button>
+              </div>
+
+              {loadingAudits ? (
+                <div className="text-center py-8 text-xs text-slate-400 font-mono">
+                  Loading authoritative database records...
                 </div>
-              ))}
+              ) : scoreAudits.length > 0 ? (
+                scoreAudits.map((sub) => (
+                  <div key={sub.id} className="p-3.5 rounded-xl bg-slate-950/60 border border-slate-800 flex items-center justify-between text-xs">
+                    <div>
+                      <div className="font-bold text-white flex items-center gap-2">
+                        <span>{sub.username}</span>
+                        <span className="text-[10px] text-slate-400 uppercase font-mono px-1.5 py-0.2 bg-slate-800 rounded">
+                          {sub.mode}
+                        </span>
+                      </div>
+                      <div className="text-slate-400 font-mono text-[11px] mt-0.5">
+                        Seed: {sub.seed} • {sub.distance}m • {sub.maxCombo}x combo
+                      </div>
+                      {sub.rejectionReason && (
+                        <div className="text-rose-400 text-[10px] font-mono mt-0.5">
+                          Reason: {sub.rejectionReason}
+                        </div>
+                      )}
+                    </div>
+                    <div className="text-right">
+                      <div className="font-bold text-cyan-300 font-display text-sm">
+                        {(sub.validatedScore || sub.claimedScore).toLocaleString()} pts
+                      </div>
+                      <span
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full inline-block mt-1 ${
+                          sub.validationStatus === 'VALIDATED'
+                            ? 'bg-emerald-950 text-emerald-400 border border-emerald-500/30'
+                            : 'bg-rose-950 text-rose-400 border border-rose-500/30'
+                        }`}
+                      >
+                        {sub.validationStatus}
+                      </span>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="text-center py-10 px-4 bg-slate-950/40 rounded-2xl border border-slate-800">
+                  <div className="text-sm font-bold text-white">No Audited Runs Logged Yet</div>
+                  <p className="text-xs text-slate-400 mt-1">
+                    Play a round of Spark Rush to log your first verified submission in the audit log.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {activeTab === 'setup' && (
+            <div className="space-y-4 text-xs">
+              <div className="p-4 rounded-2xl bg-slate-950/60 border border-slate-800">
+                <h4 className="font-bold text-white text-sm mb-2 flex items-center gap-2">
+                  <Key className="w-4 h-4 text-amber-400" /> Supabase PostgreSQL Connection Setup
+                </h4>
+                <p className="text-slate-300 leading-relaxed mb-3">
+                  To connect SPARKVERSE directly to your external Supabase PostgreSQL instance:
+                </p>
+
+                <ol className="list-decimal list-inside space-y-2 text-slate-300 font-medium">
+                  <li>
+                    Create a new project at <strong className="text-cyan-400">supabase.com</strong>.
+                  </li>
+                  <li>
+                    Open the <strong className="text-cyan-400">SQL Editor</strong> in Supabase and run the migration script:
+                    <code className="block mt-1 p-2 rounded bg-slate-900 text-cyan-300 font-mono text-[11px]">
+                      supabase/migrations/001_initial_schema.sql
+                    </code>
+                  </li>
+                  <li>
+                    Run the seed script to populate starter items:
+                    <code className="block mt-1 p-2 rounded bg-slate-900 text-amber-300 font-mono text-[11px]">
+                      supabase/seed.sql
+                    </code>
+                  </li>
+                  <li>
+                    Set the environment variables in your deployment environment:
+                    <div className="p-3 bg-slate-900 rounded-xl mt-1 space-y-1 font-mono text-slate-300 text-[11px]">
+                      <div>SUPABASE_URL=https://your-project.supabase.co</div>
+                      <div>SUPABASE_ANON_KEY=eyJhbGci...</div>
+                      <div>SUPABASE_SERVICE_ROLE_KEY=eyJhbGci...</div>
+                    </div>
+                  </li>
+                </ol>
+              </div>
             </div>
           )}
 

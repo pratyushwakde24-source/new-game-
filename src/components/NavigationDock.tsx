@@ -26,6 +26,19 @@ export const NavigationDock: React.FC<NavigationDockProps> = ({
   const { profile } = useUserStore();
   const [isCollapsed, setIsCollapsed] = useState(false);
 
+  // Keyboard shortcut listener to toggle dock visibility (H)
+  React.useEffect(() => {
+    const handleToggleKey = (e: KeyboardEvent) => {
+      // Don't trigger if user is currently typing in an input
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.key === 'h' || e.key === 'H') {
+        setIsCollapsed((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleToggleKey);
+    return () => window.removeEventListener('keydown', handleToggleKey);
+  }, []);
+
   // During active run, dock is hidden so players have pure unobstructed flight view
   if (status === 'playing') {
     return null;
@@ -70,7 +83,7 @@ export const NavigationDock: React.FC<NavigationDockProps> = ({
         </button>
 
         {/* Action Icon Buttons */}
-        <div className="flex items-center gap-1 md:gap-2 overflow-x-auto py-1">
+        <div className="flex items-center gap-1 md:gap-2 overflow-x-auto no-scrollbar py-1">
           <button
             onClick={onOpenModes}
             className="p-2.5 md:p-3 rounded-2xl hover:bg-slate-800 text-slate-300 hover:text-cyan-300 transition flex flex-col items-center gap-1 cursor-pointer shrink-0"

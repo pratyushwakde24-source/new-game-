@@ -3,6 +3,7 @@ import { GameMode, PlayerStats, Collectible, Obstacle } from '../types/game.ts';
 import { calculateMultiplier, DEFAULT_SCORING_CONFIG } from '../game/scoring/scoringConfig.ts';
 import { soundManager } from '../game/audio/soundManager.ts';
 import { apiClient } from '../services/apiClient.ts';
+import { useUserStore } from './useUserStore.ts';
 
 export type GameStatus = 'idle' | 'tutorial' | 'playing' | 'paused' | 'game_over' | 'pass_device';
 
@@ -37,6 +38,8 @@ interface GameState {
   patternChainCount: number; // For Pattern Quest mode
   familyPlayers: FamilyPlayer[]; // For Family Party mode
   currentFamilyPlayerIdx: number;
+  currentSessionId: string;
+  isScoreSubmitted: boolean;
 
   // Actions
   startGame: (mode?: GameMode, seed?: number) => void;
@@ -101,15 +104,20 @@ export const useGameStore = create<GameState>((set, get) => ({
     { id: 'p2', name: 'Player 2', score: 0 },
   ],
   currentFamilyPlayerIdx: 0,
+  currentSessionId: 'initial_session',
+  isScoreSubmitted: false,
 
   startGame: (mode = 'endless', seed) => {
     soundManager.startAmbient();
     const effectiveSeed = seed ?? (mode === 'daily' ? 948271 : Date.now());
+    const newSessionId = 'run_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now();
 
     set((state) => ({
       status: 'playing',
       mode,
       currentSeed: effectiveSeed,
+      currentSessionId: newSessionId,
+      isScoreSubmitted: false,
       playerPos: [0, 1.2, 0],
       speed: mode === 'zen' ? 12 : 16,
       baseSpeed: mode === 'zen' ? 12 : 16,
@@ -148,7 +156,10 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   endGame: () => {
     soundManager.playGameOver();
-    const { stats, mode, currentFamilyPlayerIdx, familyPlayers, currentSeed } = get();
+    const { stats, mode, currentFamilyPlayerIdx, familyPlayers, currentSeed, currentSessionId, isScoreSubmitted } = get();
+    if (isScoreSubmitted) return;
+    set({ isScoreSubmitted: true });
+
     const currentScore = stats.score;
     const currentHigh = stats.highScore;
     const newHigh = Math.max(currentScore, currentHigh);
@@ -170,13 +181,37 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
 
     // Submit score to backend server with anti-cheat validation
+    const userState = useUserStore.getState();
     apiClient.submitScore({
-      sessionId: 'sess_' + Date.now(),
+      sessionId: currentSessionId,
+      userId: userState.profile.id,
+      username: userState.profile.username,
       score: currentScore,
       mode,
       seed: currentSeed,
       maxCombo: stats.maxCombo,
+      distance: stats.distanceTraveled,
       durationSeconds: Math.max(5, Math.round(stats.runDuration)),
+    }).catch(() => {});
+
+    // Authoritative Cloud Save Sync to PostgreSQL
+    apiClient.syncCloudSave({
+      userId: userState.profile.id,
+      stats: {
+        level: newLevel,
+        xp: newXp,
+        sparkCoins: stats.sparkCoins + earnedCoins,
+        highScore: newHigh,
+        distanceTraveled: stats.distanceTraveled,
+      },
+      equippedSkin: userState.equippedSkin,
+      equippedTrail: userState.equippedTrail,
+      equippedEnv: userState.equippedEnv,
+      achievements: userState.achievements.map((a: { id: string; progress: number; unlocked: boolean }) => ({
+        id: a.id,
+        progress: a.progress,
+        unlocked: a.unlocked,
+      })),
     }).catch(() => {});
 
     // Family party mode turn management

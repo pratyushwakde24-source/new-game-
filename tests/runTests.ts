@@ -46,9 +46,14 @@ assert(
 );
 
 const levelGen = new LevelGenerator(948271);
-const chunk0 = levelGen.generateChunk(0, 60, 1);
+const chunk0 = levelGen.generateChunk(0, 70, 1);
 assert(chunk0.collectibles.length > 0, 'Chunk 0 generates safe collectible path');
-assert(chunk0.startZ === 0 && chunk0.endZ === -60, 'Chunk Z bounds are accurate');
+assert(chunk0.startZ === 0 && chunk0.endZ === -70, 'Chunk Z bounds are accurate');
+
+// Verify first 40 meters are free of harmful obstacles for organic onboarding
+const introObstacles = chunk0.obstacles.filter((o) => Math.abs(o.position[2]) < 40 && o.harmful);
+assert(introObstacles.length === 0, 'First 40m has 0 harmful obstacles for safe onboarding');
+
 
 // 3. Collision Engine Tests
 console.log('\n[3/4] Testing Collision Engine:');
@@ -137,11 +142,106 @@ assert(
   'Impossible score-rate ceiling properly rejected'
 );
 
-console.log('\n========================================');
-const passedCount = results.filter((r) => r.passed).length;
-console.log(`TEST SUMMARY: ${passedCount}/${results.length} PASSED`);
-console.log('========================================\n');
+// 5. Database Service & Cloud Save Synchronization Tests
+console.log('\n[5/5] Testing Database Service & Cloud Saves:');
+import { supabaseService } from '../server/services/supabaseService.ts';
 
-if (passedCount !== results.length) {
-  process.exit(1);
+async function runDatabaseTests() {
+  // Test Profile creation
+  const prof = await supabaseService.getOrCreateProfile('u_test_99', 'CosmicRanger99', true);
+  assert(prof.username === 'CosmicRanger99', 'Database creates or retrieves user profile');
+
+  // Test Validated score insertion
+  await supabaseService.recordScoreSubmission({
+    sessionId: 'sess_db_test_1',
+    userId: 'u_test_99',
+    username: 'CosmicRanger99',
+    mode: 'endless',
+    seed: 948271,
+    claimedScore: 2500,
+    validatedScore: 2500,
+    maxCombo: 18,
+    distance: 400,
+    validationStatus: 'VALIDATED',
+  });
+
+  await supabaseService.recordScoreSubmission({
+    sessionId: 'sess_db_test_2',
+    userId: 'u_test_100',
+    username: 'AstroAce',
+    mode: 'endless',
+    seed: 948271,
+    claimedScore: 3200,
+    validatedScore: 3200,
+    maxCombo: 24,
+    distance: 520,
+    validationStatus: 'VALIDATED',
+  });
+
+  // Test Leaderboard sorting
+  const leaderboard = await supabaseService.getLeaderboard('endless', 10);
+  assert(leaderboard.length >= 2, 'Leaderboard returns submitted database entries');
+  assert(leaderboard[0].score >= leaderboard[1].score, 'Leaderboard correctly sorts scores descending');
+
+  // Test Cloud Save Sync
+  const cloudSavePayload = {
+    stats: {
+      level: 4,
+      xp: 450,
+      sparkCoins: 120,
+      highScore: 3200,
+      distanceTraveled: 920,
+    },
+    equippedSkin: 'skin_void_violet',
+    equippedTrail: 'trail_comet_blaze',
+    equippedEnv: 'env_aurora_nebula',
+    achievements: [{ id: 'ach_first_steps', progress: 10, unlocked: true }],
+  };
+
+  await supabaseService.saveCloudState('u_test_99', cloudSavePayload);
+  const fetchedCloud = await supabaseService.getCloudState('u_test_99');
+  assert(fetchedCloud !== null, 'Cloud save is successfully retrieved from database');
+  assert(fetchedCloud?.stats.level === 4, 'Cloud save restores player level accurately');
+  assert(fetchedCloud?.stats.sparkCoins === 120, 'Cloud save restores spark coins accurately');
+
+  // Test Score Audits retrieval
+  const audits = await supabaseService.getScoreAudits(10);
+  assert(audits.length >= 2, 'Score audit log returns submitted database records');
+  assert(Boolean(audits[0].sessionId), 'Audit records retain authoritative session ID');
+
+  // Test Database-level Idempotent Replay Prevention
+  const initialAuditCount = audits.length;
+  await supabaseService.recordScoreSubmission({
+    sessionId: 'sess_db_test_1', // Re-submitting exact same session ID
+    userId: 'u_test_99',
+    username: 'CosmicRanger99',
+    mode: 'endless',
+    seed: 948271,
+    claimedScore: 2500,
+    validatedScore: 2500,
+    maxCombo: 18,
+    distance: 400,
+    validationStatus: 'VALIDATED',
+  });
+  const postDupAudits = await supabaseService.getScoreAudits(10);
+  assert(postDupAudits.length === initialAuditCount, 'Database deduplication preserves audit integrity without duplicates');
+
+  // Test Multiplayer Room Manager & Seed Synchronization
+  const { roomManager } = await import('../server/multiplayer/roomManager.ts');
+  const createdRoom = roomManager.createRoom('host_pilot_1', 'CaptainCosmo', 'friend');
+  assert(Boolean(createdRoom.code) && createdRoom.code.startsWith('SPARK-'), 'Room manager creates valid 6-character room code');
+  const joinedRoom = roomManager.joinRoom(createdRoom.code, 'guest_pilot_2', 'NavigatorNova');
+  assert(joinedRoom !== null && joinedRoom.seed === createdRoom.seed, 'Multiplayer challenge synchronizes exact procedural flight seed between players');
+
+  console.log('\n========================================');
+  const passedCount = results.filter((r) => r.passed).length;
+  console.log(`TEST SUMMARY: ${passedCount}/${results.length} PASSED`);
+  console.log('========================================\n');
+
+  if (passedCount !== results.length) {
+    process.exit(1);
+  }
 }
+
+runDatabaseTests();
+

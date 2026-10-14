@@ -29,6 +29,19 @@ export const GameOverModal: React.FC = () => {
     }
   }, [status, stats.score, isNewHighScore]);
 
+  // Instant replay keyboard shortcut listener (Space or R)
+  useEffect(() => {
+    if (status !== 'game_over') return;
+    const handleReplayKey = (e: KeyboardEvent) => {
+      if (e.key === ' ' || e.key === 'r' || e.key === 'R') {
+        e.preventDefault();
+        startGame(mode);
+      }
+    };
+    window.addEventListener('keydown', handleReplayKey);
+    return () => window.removeEventListener('keydown', handleReplayKey);
+  }, [status, mode, startGame]);
+
   if (status !== 'game_over') return null;
 
   const earnedXp = Math.round(stats.score * 0.1) + stats.gatesCleared * 15;
@@ -145,6 +158,9 @@ export const GameOverModal: React.FC = () => {
           >
             <RotateCcw className="w-5 h-5" /> Launch Next Run
           </button>
+          <div className="text-center text-[11px] text-slate-400 font-medium">
+            Press <kbd className="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-300 font-mono text-[10px]">Space</kbd> or <kbd className="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-300 font-mono text-[10px]">R</kbd> for instant replay
+          </div>
 
           <button
             onClick={resetGame}

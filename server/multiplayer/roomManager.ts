@@ -22,7 +22,8 @@ export class RoomManager {
   private rooms = new Map<string, Room>();
 
   public createRoom(hostId: string, hostUsername: string, mode = 'friend'): Room {
-    const code = Math.random().toString(36).substring(2, 8).toUpperCase();
+    const rawCode = Math.random().toString(36).substring(2, 6).toUpperCase();
+    const code = `SPARK-${rawCode}`;
     const seed = Math.floor(Math.random() * 1000000);
     const room: Room = {
       id: 'room_' + Date.now(),
@@ -48,8 +49,14 @@ export class RoomManager {
     return room;
   }
 
+  private normalizeCode(code: string): string {
+    const upper = code.trim().toUpperCase();
+    return upper.startsWith('SPARK-') ? upper : `SPARK-${upper}`;
+  }
+
   public joinRoom(code: string, playerId: string, username: string): Room | null {
-    const room = this.rooms.get(code.toUpperCase());
+    const normalized = this.normalizeCode(code);
+    const room = this.rooms.get(normalized);
     if (!room) return null;
     if (room.players.size >= 4) return null; // Room full
 
@@ -67,7 +74,7 @@ export class RoomManager {
   }
 
   public getRoom(code: string): Room | undefined {
-    return this.rooms.get(code.toUpperCase());
+    return this.rooms.get(this.normalizeCode(code));
   }
 
   public setPlayerReady(code: string, playerId: string, ready: boolean): boolean {

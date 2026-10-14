@@ -85,6 +85,8 @@ const MODES: ModeCard[] = [
 export const ModeSelectorModal: React.FC<ModeSelectorModalProps> = ({ isOpen, onClose }) => {
   const { startGame, mode: currentMode, startFamilyTournament } = useGameStore();
   const [familySetupOpen, setFamilySetupOpen] = useState(false);
+  const [friendSetupOpen, setFriendSetupOpen] = useState(false);
+  const [friendCodeInput, setFriendCodeInput] = useState('SPARK-4829');
   const [familyNames, setFamilyNames] = useState<string[]>(['Player 1', 'Player 2']);
 
   if (!isOpen) return null;
@@ -92,6 +94,10 @@ export const ModeSelectorModal: React.FC<ModeSelectorModalProps> = ({ isOpen, on
   const handleSelectMode = (mode: GameMode) => {
     if (mode === 'family') {
       setFamilySetupOpen(true);
+      return;
+    }
+    if (mode === 'friend') {
+      setFriendSetupOpen(true);
       return;
     }
     startGame(mode);
@@ -123,11 +129,13 @@ export const ModeSelectorModal: React.FC<ModeSelectorModalProps> = ({ isOpen, on
         <div className="flex items-center justify-between p-5 md:p-6 border-b border-slate-800">
           <div>
             <h2 className="text-2xl font-black text-white font-display">
-              {familySetupOpen ? 'Family Tournament Setup' : 'Select Flight Mode'}
+              {familySetupOpen ? 'Family Tournament Setup' : friendSetupOpen ? 'Friend Challenge Setup' : 'Select Flight Mode'}
             </h2>
             <p className="text-xs text-slate-400">
               {familySetupOpen
                 ? 'Configure players for local pass-and-play'
+                : friendSetupOpen
+                ? 'Enter room code to sync tracks with friends'
                 : 'Choose your cosmic challenge'}
             </p>
           </div>
@@ -140,7 +148,49 @@ export const ModeSelectorModal: React.FC<ModeSelectorModalProps> = ({ isOpen, on
         </div>
 
         {/* Content */}
-        {familySetupOpen ? (
+        {friendSetupOpen ? (
+          <div className="p-5 md:p-6 overflow-y-auto space-y-4 flex-1">
+            <p className="text-xs text-slate-300">
+              Fly against your friend on the exact same seeded cosmic course! Enter their room code or generate your own.
+            </p>
+
+            <div>
+              <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+                Challenge Room Code
+              </label>
+              <input
+                type="text"
+                value={friendCodeInput}
+                onChange={(e) => setFriendCodeInput(e.target.value.toUpperCase())}
+                placeholder="SPARK-XXXX"
+                maxLength={14}
+                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white font-mono font-black text-base focus:outline-none focus:border-cyan-400"
+              />
+            </div>
+
+            <div className="pt-2 flex gap-3">
+              <button
+                onClick={() => setFriendSetupOpen(false)}
+                className="w-1/3 py-3 px-4 rounded-xl bg-slate-800 text-slate-300 font-bold text-xs hover:bg-slate-700 transition cursor-pointer"
+              >
+                Back
+              </button>
+              <button
+                onClick={() => {
+                  const hash = friendCodeInput
+                    .split('')
+                    .reduce((acc, char) => acc + char.charCodeAt(0), 12345);
+                  startGame('friend', hash * 7919);
+                  setFriendSetupOpen(false);
+                  onClose();
+                }}
+                className="w-2/3 py-3 px-4 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white font-black text-sm shadow-lg transition cursor-pointer font-display"
+              >
+                Launch Challenge Run
+              </button>
+            </div>
+          </div>
+        ) : familySetupOpen ? (
           <div className="p-5 md:p-6 overflow-y-auto space-y-4 flex-1">
             <p className="text-xs text-slate-300">
               Take turns flying the cosmic course on this device. At the end of each flight, the device will prompt the next player!

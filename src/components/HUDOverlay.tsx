@@ -60,6 +60,14 @@ export const HUDOverlay: React.FC = () => {
 
   const isPaused = status === 'paused';
 
+  // Dynamic color grading for combo badges
+  const getComboStyle = (multiplier: number) => {
+    if (multiplier >= 4.0) return 'from-rose-600 via-pink-600 to-amber-500 border-amber-300 text-white shadow-rose-500/40';
+    if (multiplier >= 2.5) return 'from-amber-500 via-yellow-400 to-amber-600 border-yellow-200 text-slate-950 shadow-yellow-500/40';
+    if (multiplier >= 1.5) return 'from-violet-600 to-fuchsia-600 border-violet-400 text-white shadow-violet-500/30';
+    return 'from-cyan-600 to-blue-600 border-cyan-400 text-white shadow-cyan-500/20';
+  };
+
   return (
     <div className="absolute inset-0 pointer-events-none flex flex-col justify-between p-4 md:p-6 z-20">
       {/* Top Header Bar */}
@@ -74,12 +82,12 @@ export const HUDOverlay: React.FC = () => {
           </div>
 
           {stats.combo > 0 && (
-            <div className="bg-gradient-to-r from-violet-600/90 to-fuchsia-600/90 backdrop-blur-md px-3.5 py-2 rounded-2xl border border-violet-400/40 text-white shadow-lg animate-bounce">
+            <div className={`bg-gradient-to-r ${getComboStyle(stats.multiplier)} backdrop-blur-md px-3.5 py-2 rounded-2xl border text-white shadow-lg animate-bounce`}>
               <div className="flex items-center gap-1.5 font-black text-lg md:text-xl font-display">
-                <Zap className="w-5 h-5 text-yellow-300 fill-yellow-300" />
+                <Zap className="w-5 h-5 fill-current" />
                 <span>{stats.multiplier.toFixed(1)}x</span>
               </div>
-              <div className="text-[9px] uppercase tracking-wider text-violet-200 font-semibold text-center">
+              <div className="text-[9px] uppercase tracking-wider font-semibold text-center opacity-90">
                 {stats.combo} Combo
               </div>
             </div>
@@ -150,6 +158,19 @@ export const HUDOverlay: React.FC = () => {
         </div>
       </div>
 
+      {/* Organic Contextual Tutorial (First 30 Seconds / 90 Meters) */}
+      {stats.distanceTraveled < 90 && (
+        <div className="self-center absolute top-20 bg-slate-900/90 border border-cyan-500/40 backdrop-blur-md px-5 py-2 rounded-full text-xs font-bold text-cyan-200 shadow-2xl animate-pulse pointer-events-none tracking-wide text-center">
+          {stats.distanceTraveled < 25 ? (
+            <span>◀ STEER WITH A / D, ARROWS OR TOUCH TO CATCH SPARKS ▶</span>
+          ) : stats.distanceTraveled < 55 ? (
+            <span>FLY THROUGH GLOWING PURPLE GATES (+50 PTS)</span>
+          ) : (
+            <span>CHAIN CONSECUTIVE SPARKS FOR 5.0x COMBO!</span>
+          )}
+        </div>
+      )}
+
       {/* Floating Score Popup */}
       {recentScorePopup && (
         <div
@@ -182,32 +203,40 @@ export const HUDOverlay: React.FC = () => {
         )}
       </div>
 
-      {/* Mobile Virtual Steer Arrows */}
+      {/* Mobile Virtual Steer Arrows + Boost Button */}
       {settings.showTouchControls && (
-        <div className="w-full flex justify-between items-center px-4 py-2 pointer-events-auto md:hidden">
+        <div className="w-full flex justify-between items-center px-2 py-2 pointer-events-auto md:hidden">
           <button
             onPointerDown={() => {
-              const ke = new KeyboardEvent('keydown', { key: 'ArrowLeft' });
-              window.dispatchEvent(ke);
+              window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft' }));
             }}
             onPointerUp={() => {
-              const ke = new KeyboardEvent('keyup', { key: 'ArrowLeft' });
-              window.dispatchEvent(ke);
+              window.dispatchEvent(new KeyboardEvent('keyup', { key: 'ArrowLeft' }));
             }}
             className="w-16 h-16 rounded-2xl bg-cyan-950/80 active:bg-cyan-600 border border-cyan-500/40 text-cyan-200 flex items-center justify-center font-bold text-2xl shadow-xl active:scale-95 cursor-pointer"
             aria-label="Steer Left"
           >
             ◀
           </button>
-          <div className="text-xs text-slate-400 font-medium">Swipe or tap arrows</div>
+
+          {/* Quick Boost / Surge Button */}
           <button
             onPointerDown={() => {
-              const ke = new KeyboardEvent('keydown', { key: 'ArrowRight' });
-              window.dispatchEvent(ke);
+              window.dispatchEvent(new KeyboardEvent('keydown', { key: ' ' }));
+            }}
+            className="px-5 py-3.5 rounded-2xl bg-gradient-to-r from-amber-500 to-yellow-400 active:from-amber-600 active:to-yellow-500 text-slate-950 font-black text-xs shadow-xl active:scale-95 flex items-center gap-1.5 cursor-pointer font-display border border-amber-300"
+            aria-label="Spark Surge Boost"
+          >
+            <Zap className="w-4 h-4 fill-slate-950" />
+            <span>BOOST</span>
+          </button>
+
+          <button
+            onPointerDown={() => {
+              window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight' }));
             }}
             onPointerUp={() => {
-              const ke = new KeyboardEvent('keyup', { key: 'ArrowRight' });
-              window.dispatchEvent(ke);
+              window.dispatchEvent(new KeyboardEvent('keyup', { key: 'ArrowRight' }));
             }}
             className="w-16 h-16 rounded-2xl bg-cyan-950/80 active:bg-cyan-600 border border-cyan-500/40 text-cyan-200 flex items-center justify-center font-bold text-2xl shadow-xl active:scale-95 cursor-pointer"
             aria-label="Steer Right"

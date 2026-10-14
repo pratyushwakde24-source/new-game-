@@ -1,7 +1,23 @@
 /**
  * Procedural Web Audio Sound Synthesizer for SPARKVERSE
- * Zero 404 dependencies: all sound effects and ambient chords generated via Web Audio API
+ * Zero 404 dependencies: all sound effects and ambient chords generated via Web Audio API.
+ * Uses a harmonic Pentatonic Celestial Scale for combo collection chains.
  */
+
+const PENTATONIC_FREQUENCIES = [
+  523.25, // C5
+  587.33, // D5
+  659.25, // E5
+  783.99, // G5
+  880.00, // A5
+  1046.50, // C6
+  1174.66, // D6
+  1318.51, // E6
+  1567.98, // G6
+  1760.00, // A6
+  2093.00, // C7
+];
+
 class SoundManager {
   private ctx: AudioContext | null = null;
   private masterGain: GainNode | null = null;
@@ -13,7 +29,9 @@ class SoundManager {
 
   private initContext() {
     if (!this.ctx) {
-      const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      const AudioCtx =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       this.ctx = new AudioCtx();
       this.masterGain = this.ctx.createGain();
       this.sfxGain = this.ctx.createGain();
@@ -46,24 +64,41 @@ class SoundManager {
       if (!this.ctx || !this.sfxGain || this.isMuted) return;
 
       const now = this.ctx.currentTime;
+      const noteIdx = Math.min(Math.max(0, combo - 1), PENTATONIC_FREQUENCIES.length - 1);
+      const noteFreq = PENTATONIC_FREQUENCIES[noteIdx];
+
+      // Primary crystalline tone
       const osc = this.ctx.createOscillator();
       const gain = this.ctx.createGain();
 
-      // Pitch rises smoothly with combo count
-      const baseFreq = 520;
-      const comboOffset = Math.min(combo * 40, 600);
       osc.type = 'sine';
-      osc.frequency.setValueAtTime(baseFreq + comboOffset, now);
-      osc.frequency.exponentialRampToValueAtTime(baseFreq + comboOffset + 380, now + 0.12);
+      osc.frequency.setValueAtTime(noteFreq, now);
+      osc.frequency.exponentialRampToValueAtTime(noteFreq * 1.05, now + 0.1);
 
-      gain.gain.setValueAtTime(0.3, now);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+      // Warm attack and gentle exponential decay
+      gain.gain.setValueAtTime(0.001, now);
+      gain.gain.linearRampToValueAtTime(0.32, now + 0.015);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
 
       osc.connect(gain);
       gain.connect(this.sfxGain);
 
       osc.start(now);
-      osc.stop(now + 0.16);
+      osc.stop(now + 0.17);
+
+      // High combo overtone shimmer
+      if (combo >= 5) {
+        const overtone = this.ctx.createOscillator();
+        const overGain = this.ctx.createGain();
+        overtone.type = 'triangle';
+        overtone.frequency.setValueAtTime(noteFreq * 2, now);
+        overGain.gain.setValueAtTime(0.08, now);
+        overGain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+        overtone.connect(overGain);
+        overGain.connect(this.sfxGain);
+        overtone.start(now);
+        overtone.stop(now + 0.19);
+      }
     } catch {
       // Audio autoplay policy fallback
     }
@@ -75,23 +110,24 @@ class SoundManager {
       if (!this.ctx || !this.sfxGain || this.isMuted) return;
 
       const now = this.ctx.currentTime;
-      // Dual tone shimmer
-      [784, 1174, 1568].forEach((freq, i) => {
+      // Radiant triple-tone celestial chord
+      [784, 1046.5, 1568].forEach((freq, i) => {
         if (!this.ctx || !this.sfxGain) return;
         const osc = this.ctx.createOscillator();
         const gain = this.ctx.createGain();
         osc.type = 'triangle';
-        osc.frequency.setValueAtTime(freq, now + i * 0.04);
-        osc.frequency.exponentialRampToValueAtTime(freq * 1.5, now + i * 0.04 + 0.2);
+        osc.frequency.setValueAtTime(freq, now + i * 0.03);
+        osc.frequency.exponentialRampToValueAtTime(freq * 1.25, now + i * 0.03 + 0.22);
 
-        gain.gain.setValueAtTime(0.25, now + i * 0.04);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.04 + 0.35);
+        gain.gain.setValueAtTime(0.001, now + i * 0.03);
+        gain.gain.linearRampToValueAtTime(0.28, now + i * 0.03 + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.03 + 0.35);
 
         osc.connect(gain);
         gain.connect(this.sfxGain);
 
-        osc.start(now + i * 0.04);
-        osc.stop(now + i * 0.04 + 0.36);
+        osc.start(now + i * 0.03);
+        osc.stop(now + i * 0.03 + 0.36);
       });
     } catch {}
   }
@@ -102,20 +138,22 @@ class SoundManager {
       if (!this.ctx || !this.sfxGain || this.isMuted) return;
 
       const now = this.ctx.currentTime;
+      // Resonant sonic swoosh + victory chime
       const osc = this.ctx.createOscillator();
       const filter = this.ctx.createBiquadFilter();
       const gain = this.ctx.createGain();
 
       osc.type = 'sawtooth';
-      osc.frequency.setValueAtTime(220, now);
-      osc.frequency.exponentialRampToValueAtTime(880, now + 0.25);
+      osc.frequency.setValueAtTime(330, now);
+      osc.frequency.exponentialRampToValueAtTime(990, now + 0.25);
 
       filter.type = 'bandpass';
       filter.frequency.setValueAtTime(600, now);
-      filter.frequency.exponentialRampToValueAtTime(2400, now + 0.25);
-      filter.Q.value = 3;
+      filter.frequency.exponentialRampToValueAtTime(2800, now + 0.25);
+      filter.Q.value = 4;
 
-      gain.gain.setValueAtTime(0.4, now);
+      gain.gain.setValueAtTime(0.001, now);
+      gain.gain.linearRampToValueAtTime(0.4, now + 0.02);
       gain.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
 
       osc.connect(filter);
@@ -124,6 +162,18 @@ class SoundManager {
 
       osc.start(now);
       osc.stop(now + 0.3);
+
+      // Secondary bell chime
+      const bell = this.ctx.createOscillator();
+      const bellGain = this.ctx.createGain();
+      bell.type = 'sine';
+      bell.frequency.setValueAtTime(1318.51, now + 0.05); // E6
+      bellGain.gain.setValueAtTime(0.25, now + 0.05);
+      bellGain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+      bell.connect(bellGain);
+      bellGain.connect(this.sfxGain);
+      bell.start(now + 0.05);
+      bell.stop(now + 0.36);
     } catch {}
   }
 
@@ -133,15 +183,16 @@ class SoundManager {
       if (!this.ctx || !this.sfxGain || this.isMuted) return;
 
       const now = this.ctx.currentTime;
+      // Sub-bass thump
       const osc = this.ctx.createOscillator();
       const gain = this.ctx.createGain();
 
       osc.type = 'square';
-      osc.frequency.setValueAtTime(140, now);
-      osc.frequency.exponentialRampToValueAtTime(45, now + 0.2);
+      osc.frequency.setValueAtTime(160, now);
+      osc.frequency.exponentialRampToValueAtTime(35, now + 0.22);
 
-      gain.gain.setValueAtTime(0.5, now);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+      gain.gain.setValueAtTime(0.55, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.24);
 
       osc.connect(gain);
       gain.connect(this.sfxGain);
@@ -157,21 +208,21 @@ class SoundManager {
       if (!this.ctx || !this.sfxGain || this.isMuted) return;
 
       const now = this.ctx.currentTime;
-      const notes = [440, 392, 349, 293];
+      const notes = [440, 392, 349, 261.63];
       notes.forEach((freq, idx) => {
         if (!this.ctx || !this.sfxGain) return;
         const osc = this.ctx.createOscillator();
         const gain = this.ctx.createGain();
         osc.type = 'sine';
-        osc.frequency.setValueAtTime(freq, now + idx * 0.15);
-        gain.gain.setValueAtTime(0.3, now + idx * 0.15);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.15 + 0.3);
+        osc.frequency.setValueAtTime(freq, now + idx * 0.16);
+        gain.gain.setValueAtTime(0.28, now + idx * 0.16);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.16 + 0.32);
 
         osc.connect(gain);
         gain.connect(this.sfxGain);
 
-        osc.start(now + idx * 0.15);
-        osc.stop(now + idx * 0.15 + 0.35);
+        osc.start(now + idx * 0.16);
+        osc.stop(now + idx * 0.16 + 0.35);
       });
     } catch {}
   }

@@ -11,19 +11,17 @@ import { Collectible, Obstacle } from '../../types/game.ts';
 // Reusable math helpers to guarantee zero Garbage Collection during animation loop
 const _vec3 = new THREE.Vector3();
 const _camTarget = new THREE.Vector3();
-const _playerTargetPos = new THREE.Vector3(0, 1.2, 0);
 
 interface SparkRushCanvasProps {
   onGameOver?: () => void;
 }
 
-export const SparkRushCanvas: React.FC<SparkRushCanvasProps> = ({ onGameOver }) => {
+const MAX_BURST_PARTICLES = 60;
+
+export const SparkRushCanvas: React.FC<SparkRushCanvasProps> = () => {
   const containerRef = useRef<HTMLDivElement>(null);
   const status = useGameStore((s) => s.status);
-  const mode = useGameStore((s) => s.mode);
   const currentSeed = useGameStore((s) => s.currentSeed);
-  const speed = useGameStore((s) => s.speed);
-  const activePowerups = useGameStore((s) => s.activePowerups);
   const { cosmetics, equippedSkin, equippedEnv } = useUserStore();
   const { settings } = useSettingsStore();
 
@@ -39,12 +37,19 @@ export const SparkRushCanvas: React.FC<SparkRushCanvasProps> = ({ onGameOver }) 
     playerShieldMesh: THREE.Mesh;
     shakeIntensity: number;
     starfield: THREE.Points;
+    leftRail: THREE.Mesh;
+    rightRail: THREE.Mesh;
     trackGroup: THREE.Group;
     collectiblesGroup: THREE.Group;
     obstaclesGroup: THREE.Group;
     trailPoints: THREE.Points;
     trailPositions: Float32Array;
     trailHead: number;
+    burstPoints: THREE.Points;
+    burstPositions: Float32Array;
+    burstVelocities: Float32Array;
+    burstLife: Float32Array;
+    burstColors: Float32Array;
     levelGen: LevelGenerator;
     activeChunks: number[];
     currentZ: number;
@@ -56,6 +61,8 @@ export const SparkRushCanvas: React.FC<SparkRushCanvasProps> = ({ onGameOver }) 
     activeCollectibles: Collectible[];
     activeObstacles: Obstacle[];
     animId: number | null;
+    boostDuration: number;
+    boostCooldown: number;
   } | null>(null);
 
   // Initialize Three.js scene and 60fps render loop
@@ -84,7 +91,7 @@ export const SparkRushCanvas: React.FC<SparkRushCanvasProps> = ({ onGameOver }) 
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, settings.graphicsQuality === 'high' ? 2 : 1.5));
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.2;
+    renderer.toneMappingExposure = 1.25;
     renderer.shadowMap.enabled = settings.graphicsQuality === 'high';
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
@@ -96,11 +103,11 @@ export const SparkRushCanvas: React.FC<SparkRushCanvasProps> = ({ onGameOver }) 
     pmrem.dispose();
 
     // 4. Lighting Rig
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.75);
     scene.add(ambientLight);
 
-    const dirLight = new THREE.DirectionalLight(0x67e8f9, 2.0);
-    dirLight.position.set(5, 12, 10);
+    const dirLight = new THREE.DirectionalLight(0x67e8f9, 2.2);
+    dirLight.position.set(6, 14, 10);
     if (settings.graphicsQuality === 'high') {
       dirLight.castShadow = true;
       dirLight.shadow.mapSize.width = 1024;
@@ -109,25 +116,25 @@ export const SparkRushCanvas: React.FC<SparkRushCanvasProps> = ({ onGameOver }) 
     }
     scene.add(dirLight);
 
-    const rimLight = new THREE.PointLight(0xa855f7, 3.0, 30);
+    const rimLight = new THREE.PointLight(0xa855f7, 3.2, 35);
     rimLight.position.set(-8, 6, -5);
     scene.add(rimLight);
 
     // 5. Starfield & Cosmic Grid Floor
-    const starCount = settings.graphicsQuality === 'low' ? 600 : 1500;
+    const starCount = settings.graphicsQuality === 'low' ? 600 : 1600;
     const starGeo = new THREE.BufferGeometry();
     const starPos = new Float32Array(starCount * 3);
     for (let i = 0; i < starCount * 3; i += 3) {
-      starPos[i] = (Math.random() - 0.5) * 200;
-      starPos[i + 1] = Math.random() * 80 - 10;
-      starPos[i + 2] = (Math.random() - 0.5) * 350;
+      starPos[i] = (Math.random() - 0.5) * 220;
+      starPos[i + 1] = Math.random() * 90 - 15;
+      starPos[i + 2] = (Math.random() - 0.5) * 400;
     }
     starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
     const starMat = new THREE.PointsMaterial({
       color: 0xc4b5fd,
-      size: 0.8,
+      size: 0.85,
       transparent: true,
-      opacity: 0.8,
+      opacity: 0.85,
     });
     const starfield = new THREE.Points(starGeo, starMat);
     scene.add(starfield);
@@ -136,6 +143,20 @@ export const SparkRushCanvas: React.FC<SparkRushCanvasProps> = ({ onGameOver }) 
     const gridHelper = new THREE.GridHelper(160, 40, 0x06b6d4, 0x312e81);
     gridHelper.position.set(0, -0.05, 0);
     scene.add(gridHelper);
+
+    // Glowing Neon Boundary Energy Rails
+    const railGeo = new THREE.CylinderGeometry(0.06, 0.06, 300, 8);
+    railGeo.rotateX(Math.PI / 2);
+    const leftRailMat = new THREE.MeshBasicMaterial({ color: 0x06b6d4, transparent: true, opacity: 0.7 });
+    const rightRailMat = new THREE.MeshBasicMaterial({ color: 0xa855f7, transparent: true, opacity: 0.7 });
+
+    const leftRail = new THREE.Mesh(railGeo, leftRailMat);
+    leftRail.position.set(-4.2, 0.5, 0);
+    scene.add(leftRail);
+
+    const rightRail = new THREE.Mesh(railGeo, rightRailMat);
+    rightRail.position.set(4.2, 0.5, 0);
+    scene.add(rightRail);
 
     // 6. Player Orb Group
     const playerGroup = new THREE.Group();
@@ -150,7 +171,7 @@ export const SparkRushCanvas: React.FC<SparkRushCanvasProps> = ({ onGameOver }) 
     const innerMat = new THREE.MeshPhysicalMaterial({
       color: primaryColor,
       emissive: primaryColor,
-      emissiveIntensity: 0.8,
+      emissiveIntensity: 0.85,
       roughness: 0.15,
       metalness: 0.85,
       clearcoat: 1.0,
@@ -178,7 +199,7 @@ export const SparkRushCanvas: React.FC<SparkRushCanvasProps> = ({ onGameOver }) 
     const shieldMat = new THREE.MeshStandardMaterial({
       color: 0x38bdf8,
       emissive: 0x0ea5e9,
-      emissiveIntensity: 1.5,
+      emissiveIntensity: 1.6,
       transparent: true,
       opacity: 0.85,
     });
@@ -220,7 +241,36 @@ export const SparkRushCanvas: React.FC<SparkRushCanvasProps> = ({ onGameOver }) 
     const trailPoints = new THREE.Points(trailGeo, trailMat);
     scene.add(trailPoints);
 
-    // 8. Collectibles & Obstacles Hierarchies
+    // 8. 3D Burst Shards (Collection FX)
+    const burstPositions = new Float32Array(MAX_BURST_PARTICLES * 3);
+    const burstVelocities = new Float32Array(MAX_BURST_PARTICLES * 3);
+    const burstLife = new Float32Array(MAX_BURST_PARTICLES);
+    const burstColors = new Float32Array(MAX_BURST_PARTICLES * 3);
+
+    for (let i = 0; i < MAX_BURST_PARTICLES; i++) {
+      burstPositions[i * 3] = 0;
+      burstPositions[i * 3 + 1] = -100; // start hidden
+      burstPositions[i * 3 + 2] = 0;
+      burstLife[i] = 0;
+      burstColors[i * 3] = 0.2;
+      burstColors[i * 3 + 1] = 0.8;
+      burstColors[i * 3 + 2] = 1.0;
+    }
+
+    const burstGeo = new THREE.BufferGeometry();
+    burstGeo.setAttribute('position', new THREE.BufferAttribute(burstPositions, 3));
+    burstGeo.setAttribute('color', new THREE.BufferAttribute(burstColors, 3));
+
+    const burstMat = new THREE.PointsMaterial({
+      size: 0.5,
+      vertexColors: true,
+      transparent: true,
+      opacity: 0.9,
+    });
+    const burstPoints = new THREE.Points(burstGeo, burstMat);
+    scene.add(burstPoints);
+
+    // 9. Collectibles & Obstacles Hierarchies
     const trackGroup = new THREE.Group();
     const collectiblesGroup = new THREE.Group();
     const obstaclesGroup = new THREE.Group();
@@ -242,12 +292,19 @@ export const SparkRushCanvas: React.FC<SparkRushCanvasProps> = ({ onGameOver }) 
       playerShieldMesh,
       shakeIntensity: 0,
       starfield,
+      leftRail,
+      rightRail,
       trackGroup,
       collectiblesGroup,
       obstaclesGroup,
       trailPoints,
       trailPositions,
       trailHead: 0,
+      burstPoints,
+      burstPositions,
+      burstVelocities,
+      burstLife,
+      burstColors,
       levelGen,
       activeChunks: [],
       currentZ: 0,
@@ -259,18 +316,73 @@ export const SparkRushCanvas: React.FC<SparkRushCanvasProps> = ({ onGameOver }) 
       activeCollectibles: [],
       activeObstacles: [],
       animId: null,
+      boostDuration: 0,
+      boostCooldown: 0,
+    };
+
+    // Helper to spawn sparkle burst
+    const spawnBurst = (x: number, y: number, z: number, r = 0.2, g = 0.9, b = 1.0) => {
+      if (!engineRef.current) return;
+      const eng = engineRef.current;
+      let count = 0;
+      for (let i = 0; i < MAX_BURST_PARTICLES && count < 15; i++) {
+        if (eng.burstLife[i] <= 0) {
+          eng.burstLife[i] = 0.45; // life in seconds
+          eng.burstPositions[i * 3] = x;
+          eng.burstPositions[i * 3 + 1] = y;
+          eng.burstPositions[i * 3 + 2] = z;
+
+          const angle = Math.random() * Math.PI * 2;
+          const spd = 4 + Math.random() * 6;
+          eng.burstVelocities[i * 3] = Math.cos(angle) * spd;
+          eng.burstVelocities[i * 3 + 1] = (Math.random() - 0.2) * spd;
+          eng.burstVelocities[i * 3 + 2] = Math.sin(angle) * spd;
+
+          eng.burstColors[i * 3] = r;
+          eng.burstColors[i * 3 + 1] = g;
+          eng.burstColors[i * 3 + 2] = b;
+          count++;
+        }
+      }
     };
 
     // Keyboard handlers
     const handleKeyDown = (e: KeyboardEvent) => {
       if (!engineRef.current) return;
-      const keys = engineRef.current.inputKeys;
+      const eng = engineRef.current;
+      const currentStatus = useGameStore.getState().status;
+
+      // Instant Replay / Start Shortcuts
+      if (currentStatus === 'game_over') {
+        if (e.key === 'r' || e.key === 'R' || e.key === ' ' || e.key === 'Enter') {
+          useGameStore.getState().startGame(useGameStore.getState().mode);
+          return;
+        }
+      } else if (currentStatus === 'idle') {
+        if (e.key === ' ' || e.key === 'Enter') {
+          useGameStore.getState().startGame(useGameStore.getState().mode);
+          return;
+        }
+      }
+
+      const keys = eng.inputKeys;
       if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') keys.left = true;
       if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') keys.right = true;
       if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') keys.up = true;
       if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') keys.down = true;
-      if (e.key === ' ' || e.key === 'Escape') {
-        const currentStatus = useGameStore.getState().status;
+
+      // Skill-based Phase / Spark Boost (Spacebar or Shift during flight)
+      if (e.key === ' ' || e.key === 'Shift') {
+        if (currentStatus === 'playing') {
+          if (eng.boostCooldown <= 0) {
+            eng.boostDuration = 1.0;
+            eng.boostCooldown = 4.0;
+            spawnBurst(eng.playerX, eng.playerY, eng.currentZ, 0.9, 0.8, 0.2);
+          }
+        }
+      }
+
+      if (e.key === 'Escape' || e.key === 'p' || e.key === 'P') {
         if (currentStatus === 'playing') useGameStore.getState().pauseGame();
         else if (currentStatus === 'paused') useGameStore.getState().resumeGame();
       }
@@ -285,18 +397,18 @@ export const SparkRushCanvas: React.FC<SparkRushCanvasProps> = ({ onGameOver }) 
       if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') keys.down = false;
     };
 
-    // Pointer steer interaction
-    let isDragging = false;
+    // Pointer steer interaction (responsive desktop mouse & mobile touch)
+    let isTouching = false;
     const handlePointerDown = (e: PointerEvent) => {
-      isDragging = true;
+      isTouching = true;
       updatePointerSteer(e);
     };
     const handlePointerMove = (e: PointerEvent) => {
-      if (!isDragging && e.pointerType === 'touch') return;
+      if (e.pointerType === 'touch' && !isTouching) return;
       updatePointerSteer(e);
     };
     const handlePointerUp = () => {
-      isDragging = false;
+      isTouching = false;
     };
 
     const updatePointerSteer = (e: PointerEvent) => {
@@ -304,7 +416,7 @@ export const SparkRushCanvas: React.FC<SparkRushCanvasProps> = ({ onGameOver }) 
       const rect = container.getBoundingClientRect();
       const normX = ((e.clientX - rect.left) / rect.width) * 2 - 1;
       const normY = -(((e.clientY - rect.top) / rect.height) * 2 - 1);
-      // Map to lane boundaries [-3.8 to +3.8]
+      // Map smoothly to track boundaries [-3.8 to +3.8]
       engineRef.current.targetPlayerX = Math.max(-3.8, Math.min(3.8, normX * 4.2 * settings.controlSensitivity));
       engineRef.current.targetPlayerY = Math.max(0.6, Math.min(2.8, 1.2 + normY * 1.5));
     };
@@ -329,7 +441,7 @@ export const SparkRushCanvas: React.FC<SparkRushCanvasProps> = ({ onGameOver }) 
     // Initial Chunk Spawning
     spawnInitialChunks();
 
-    // 9. Main Animation Loop (60 FPS, Delta Time)
+    // 10. Main Animation Loop (60 FPS, Delta Time)
     const renderTick = () => {
       if (!engineRef.current) return;
       const eng = engineRef.current;
@@ -337,26 +449,31 @@ export const SparkRushCanvas: React.FC<SparkRushCanvasProps> = ({ onGameOver }) 
       const curStatus = useGameStore.getState().status;
 
       if (curStatus === 'playing') {
+        // Boost timers
+        if (eng.boostDuration > 0) eng.boostDuration = Math.max(0, eng.boostDuration - delta);
+        if (eng.boostCooldown > 0) eng.boostCooldown = Math.max(0, eng.boostCooldown - delta);
+
         // Update game loop in store
         useGameStore.getState().tickGameLoop(delta);
-        const currentSpeed = useGameStore.getState().speed;
+        const baseCurrentSpeed = useGameStore.getState().speed;
+        const currentSpeed = eng.boostDuration > 0 ? baseCurrentSpeed + 5.0 : baseCurrentSpeed;
 
-        // Player movement input handling
-        const steerSpeed = 12 * settings.controlSensitivity;
+        // Player movement input handling with snappy acceleration
+        const steerSpeed = 14 * settings.controlSensitivity;
         if (eng.inputKeys.left) eng.targetPlayerX = Math.max(-3.8, eng.targetPlayerX - steerSpeed * delta);
         if (eng.inputKeys.right) eng.targetPlayerX = Math.min(3.8, eng.targetPlayerX + steerSpeed * delta);
         if (eng.inputKeys.up) eng.targetPlayerY = Math.min(2.8, eng.targetPlayerY + steerSpeed * 0.7 * delta);
         if (eng.inputKeys.down) eng.targetPlayerY = Math.max(0.6, eng.targetPlayerY - steerSpeed * 0.7 * delta);
 
         // Exponential damping for silky smooth motion
-        eng.playerX = THREE.MathUtils.damp(eng.playerX, eng.targetPlayerX, 14, delta);
-        eng.playerY = THREE.MathUtils.damp(eng.playerY, eng.targetPlayerY, 14, delta);
+        eng.playerX = THREE.MathUtils.damp(eng.playerX, eng.targetPlayerX, 15, delta);
+        eng.playerY = THREE.MathUtils.damp(eng.playerY, eng.targetPlayerY, 15, delta);
         eng.currentZ -= currentSpeed * delta;
 
         // Bank / tilt effect on turning
-        const tiltZ = (eng.playerX - eng.targetPlayerX) * 0.25;
-        eng.playerMesh.rotation.z = THREE.MathUtils.damp(eng.playerMesh.rotation.z, tiltZ, 10, delta);
-        eng.playerMesh.rotation.y += delta * 2.5; // continuous spin
+        const tiltZ = (eng.playerX - eng.targetPlayerX) * 0.3;
+        eng.playerMesh.rotation.z = THREE.MathUtils.damp(eng.playerMesh.rotation.z, tiltZ, 12, delta);
+        eng.playerMesh.rotation.y += delta * 2.8;
         eng.playerMesh.position.set(eng.playerX, eng.playerY, eng.currentZ);
 
         // Dynamic shield ring animation
@@ -367,15 +484,22 @@ export const SparkRushCanvas: React.FC<SparkRushCanvasProps> = ({ onGameOver }) 
           eng.playerShieldMesh.rotation.z += delta * 2.0;
         }
 
-        // Update camera position smoothly tracking player
-        _camTarget.set(eng.playerX * 0.5, eng.playerY + 2.2, eng.currentZ + 6.2);
-        eng.camera.position.lerp(_camTarget, 0.15);
+        // Camera follow & Dynamic FOV scaling with speed and combo
+        const combo = useGameStore.getState().stats.combo;
+        const targetFov = 65 + Math.min(combo * 0.25, 6) + (eng.boostDuration > 0 ? 3 : 0);
+        if (Math.abs(eng.camera.fov - targetFov) > 0.05) {
+          eng.camera.fov = THREE.MathUtils.damp(eng.camera.fov, targetFov, 6, delta);
+          eng.camera.updateProjectionMatrix();
+        }
+
+        _camTarget.set(eng.playerX * 0.45, eng.playerY + 2.2, eng.currentZ + 6.2);
+        eng.camera.position.lerp(_camTarget, 0.16);
 
         // Apply screen shake recoil
         if (eng.shakeIntensity > 0) {
           eng.camera.position.x += (Math.random() - 0.5) * eng.shakeIntensity;
           eng.camera.position.y += (Math.random() - 0.5) * eng.shakeIntensity;
-          eng.shakeIntensity = Math.max(0, eng.shakeIntensity - delta * 2.0);
+          eng.shakeIntensity = Math.max(0, eng.shakeIntensity - delta * 2.2);
         }
 
         eng.camera.lookAt(eng.playerX * 0.2, eng.playerY * 0.8, eng.currentZ - 10);
@@ -390,14 +514,16 @@ export const SparkRushCanvas: React.FC<SparkRushCanvasProps> = ({ onGameOver }) 
         eng.trailHead++;
         posAttr.needsUpdate = true;
 
-        // Keep grid floor following player seamlessly
+        // Keep grid floor & boundary rails following player seamlessly
         gridHelper.position.z = Math.floor(eng.currentZ / 4) * 4;
+        eng.leftRail.position.z = Math.floor(eng.currentZ / 100) * 100;
+        eng.rightRail.position.z = eng.leftRail.position.z;
 
         // Dynamic Chunk Management
         manageChunks(eng.currentZ);
 
         // Collision Checks
-        const hasMagnet = useGameStore.getState().activePowerups.magnetDuration > 0;
+        const hasMagnet = useGameStore.getState().activePowerups.magnetDuration > 0 || eng.boostDuration > 0;
         const collision = collisionEngine.checkCollisions(
           [eng.playerX, eng.playerY, eng.currentZ],
           eng.activeCollectibles,
@@ -408,6 +534,15 @@ export const SparkRushCanvas: React.FC<SparkRushCanvasProps> = ({ onGameOver }) 
         if (collision.collectedSparks.length > 0) {
           collision.collectedSparks.forEach((spark) => {
             useGameStore.getState().onSparkCollected(spark);
+            // Spawn burst particles
+            spawnBurst(
+              spark.position[0],
+              spark.position[1],
+              spark.position[2],
+              spark.type === 'special' ? 0.95 : 0.2,
+              spark.type === 'special' ? 0.8 : 0.85,
+              spark.type === 'special' ? 0.1 : 1.0
+            );
             // Hide mesh in 3D scene
             const mesh = eng.collectiblesGroup.getObjectByName(spark.id);
             if (mesh) mesh.visible = false;
@@ -417,11 +552,13 @@ export const SparkRushCanvas: React.FC<SparkRushCanvasProps> = ({ onGameOver }) 
         if (collision.clearedGates.length > 0) {
           collision.clearedGates.forEach((gate) => {
             useGameStore.getState().onGateCleared(gate);
+            spawnBurst(gate.position[0], gate.position[1], gate.position[2], 0.65, 0.35, 0.95);
           });
         }
 
         if (collision.hitObstacles.length > 0) {
-          eng.shakeIntensity = settings.screenShake ? 0.35 : 0;
+          eng.shakeIntensity = settings.screenShake ? 0.38 : 0;
+          spawnBurst(eng.playerX, eng.playerY, eng.currentZ, 0.9, 0.2, 0.2);
           useGameStore.getState().onCollisionHit(collision.hitObstacles[0]);
         }
       } else {
@@ -429,6 +566,23 @@ export const SparkRushCanvas: React.FC<SparkRushCanvasProps> = ({ onGameOver }) 
         eng.playerMesh.rotation.y += delta * 1.0;
         eng.camera.position.x = Math.sin(Date.now() * 0.0008) * 1.5;
         eng.camera.lookAt(0, 1.2, 0);
+      }
+
+      // Update 3D burst particles
+      let hasAliveBurst = false;
+      for (let i = 0; i < MAX_BURST_PARTICLES; i++) {
+        if (eng.burstLife[i] > 0) {
+          hasAliveBurst = true;
+          eng.burstLife[i] -= delta;
+          eng.burstPositions[i * 3] += eng.burstVelocities[i * 3] * delta;
+          eng.burstPositions[i * 3 + 1] += eng.burstVelocities[i * 3 + 1] * delta;
+          eng.burstPositions[i * 3 + 2] += eng.burstVelocities[i * 3 + 2] * delta;
+        } else {
+          eng.burstPositions[i * 3 + 1] = -100;
+        }
+      }
+      if (hasAliveBurst) {
+        (eng.burstPoints.geometry.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
       }
 
       // Rotate visible collectibles for visual shimmer
@@ -463,7 +617,8 @@ export const SparkRushCanvas: React.FC<SparkRushCanvasProps> = ({ onGameOver }) 
 
     function spawnChunk(chunkIdx: number) {
       if (!engineRef.current || engineRef.current.activeChunks.includes(chunkIdx)) return;
-      const chunk = engineRef.current.levelGen.generateChunk(chunkIdx, 70, 1);
+      const difficultyTier = Math.min(1 + Math.floor(chunkIdx / 3), 4);
+      const chunk = engineRef.current.levelGen.generateChunk(chunkIdx, 70, difficultyTier);
       engineRef.current.activeChunks.push(chunkIdx);
 
       // Add collectibles to 3D scene
@@ -492,7 +647,7 @@ export const SparkRushCanvas: React.FC<SparkRushCanvasProps> = ({ onGameOver }) 
         }
       }
 
-      // Prune past chunks (more than 2 chunks behind player)
+      // Prune past chunks
       const pruneCutoffZ = currentZ + 90;
       engineRef.current.activeCollectibles = engineRef.current.activeCollectibles.filter((c) => {
         if (c.position[2] > pruneCutoffZ) {
@@ -522,7 +677,7 @@ export const SparkRushCanvas: React.FC<SparkRushCanvasProps> = ({ onGameOver }) 
         mat = new THREE.MeshPhysicalMaterial({
           color: 0xf59e0b,
           emissive: 0xf59e0b,
-          emissiveIntensity: 1.0,
+          emissiveIntensity: 1.1,
           roughness: 0.1,
           metalness: 0.9,
           clearcoat: 1.0,
@@ -547,7 +702,7 @@ export const SparkRushCanvas: React.FC<SparkRushCanvasProps> = ({ onGameOver }) 
         mat = new THREE.MeshStandardMaterial({
           color: 0x06b6d4,
           emissive: 0x0891b2,
-          emissiveIntensity: 0.8,
+          emissiveIntensity: 0.85,
           roughness: 0.2,
           metalness: 0.8,
         });
@@ -570,7 +725,7 @@ export const SparkRushCanvas: React.FC<SparkRushCanvasProps> = ({ onGameOver }) 
         const torusMat = new THREE.MeshStandardMaterial({
           color: 0x8b5cf6,
           emissive: 0x7c3aed,
-          emissiveIntensity: 1.2,
+          emissiveIntensity: 1.3,
           metalness: 0.9,
           roughness: 0.2,
         });

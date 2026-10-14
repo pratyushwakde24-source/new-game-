@@ -2,13 +2,14 @@ import React from 'react';
 import { useGameStore } from '../stores/useGameStore.ts';
 import { useUserStore } from '../stores/useUserStore.ts';
 import { useSettingsStore } from '../stores/useSettingsStore.ts';
-import { Sparkles, Volume2, VolumeX, Shield, User } from 'lucide-react';
+import { Sparkles, Volume2, VolumeX, Shield, User, Settings } from 'lucide-react';
 
 interface HeaderBannerProps {
   onOpenSettings: () => void;
+  onOpenProfile?: () => void;
 }
 
-export const HeaderBanner: React.FC<HeaderBannerProps> = ({ onOpenSettings }) => {
+export const HeaderBanner: React.FC<HeaderBannerProps> = ({ onOpenSettings, onOpenProfile }) => {
   const { status, mode } = useGameStore();
   const { profile } = useUserStore();
   const { settings, updateSetting } = useSettingsStore();
@@ -35,20 +36,24 @@ export const HeaderBanner: React.FC<HeaderBannerProps> = ({ onOpenSettings }) =>
 
       {/* User profile & Quick Audio Toggle */}
       <div className="flex items-center gap-2.5 pointer-events-auto">
-        <div className="bg-slate-900/80 backdrop-blur-md border border-slate-700/60 rounded-2xl px-3.5 py-2 shadow-xl flex items-center gap-2">
+        <button
+          onClick={onOpenProfile}
+          className="bg-slate-900/80 hover:bg-slate-800/80 backdrop-blur-md border border-slate-700/60 rounded-2xl px-3.5 py-2 shadow-xl flex items-center gap-2 transition cursor-pointer text-left"
+          title="Manage Pilot Profile & Cloud Save"
+        >
           <div className="w-7 h-7 rounded-lg bg-indigo-950 border border-indigo-500/40 flex items-center justify-center text-cyan-300">
             <User className="w-4 h-4" />
           </div>
-          <div className="hidden sm:block text-left">
+          <div className="hidden sm:block">
             <div className="text-xs font-bold text-white leading-tight flex items-center gap-1">
               <span>{profile.username}</span>
               {profile.isSparkPlus && (
                 <span className="text-[9px] uppercase font-black text-amber-400">Plus</span>
               )}
             </div>
-            <span className="text-[10px] text-slate-400">Guest Cloud Session</span>
+            <span className="text-[10px] text-cyan-300">Cloud Pilot (Click to Edit)</span>
           </div>
-        </div>
+        </button>
 
         <button
           onClick={() => updateSetting('masterVolume', settings.masterVolume > 0 ? 0 : 0.8)}
@@ -60,6 +65,14 @@ export const HeaderBanner: React.FC<HeaderBannerProps> = ({ onOpenSettings }) =>
           ) : (
             <VolumeX className="w-4 h-4 text-slate-500" />
           )}
+        </button>
+
+        <button
+          onClick={onOpenSettings}
+          className="p-2.5 rounded-2xl bg-slate-900/80 backdrop-blur-md border border-slate-700/60 text-slate-300 hover:text-white transition shadow-xl cursor-pointer"
+          title="Open Flight Settings"
+        >
+          <Settings className="w-4 h-4 text-slate-300" />
         </button>
       </div>
     </div>

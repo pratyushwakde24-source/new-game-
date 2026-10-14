@@ -13,13 +13,16 @@ export const CosmeticsModal: React.FC<CosmeticsModalProps> = ({ isOpen, onClose 
   const { stats } = useGameStore();
   const [tab, setTab] = useState<'skin' | 'trail' | 'environment'>('skin');
 
+  const [notice, setNotice] = useState<string | null>(null);
+
   if (!isOpen) return null;
 
   const currentItems = cosmetics.filter((c) => c.category === tab);
 
   const handleEquipOrUnlock = (id: string, cost: number, isUnlocked: boolean, isPlusOnly?: boolean) => {
     if (isPlusOnly && !profile.isSparkPlus) {
-      alert('This legendary cosmetic requires Spark Plus membership.');
+      setNotice('This legendary cosmetic requires Spark Plus membership.');
+      setTimeout(() => setNotice(null), 3000);
       return;
     }
 
@@ -27,11 +30,46 @@ export const CosmeticsModal: React.FC<CosmeticsModalProps> = ({ isOpen, onClose 
       if (tab === 'skin') equipItem('skin', id);
       if (tab === 'trail') equipItem('trail', id);
       if (tab === 'environment') equipItem('env', id);
+      setNotice('Equipped successfully!');
+      setTimeout(() => setNotice(null), 2000);
     } else {
       if (stats.sparkCoins >= cost) {
+        useGameStore.setState((s) => ({
+          stats: { ...s.stats, sparkCoins: s.stats.sparkCoins - cost },
+        }));
         unlockCosmetic(id);
+        if (tab === 'skin') equipItem('skin', id);
+        if (tab === 'trail') equipItem('trail', id);
+        if (tab === 'environment') equipItem('env', id);
+
+        setNotice('Unlocked and equipped!');
+        setTimeout(() => setNotice(null), 2500);
+
+        // Sync cloud state
+        const currentStats = useGameStore.getState().stats;
+        import('../services/apiClient.ts').then(({ apiClient }) => {
+          apiClient.syncCloudSave({
+            userId: profile.id,
+            stats: {
+              level: currentStats.level,
+              xp: currentStats.xp,
+              sparkCoins: currentStats.sparkCoins,
+              highScore: currentStats.highScore,
+              distanceTraveled: currentStats.distanceTraveled,
+            },
+            equippedSkin: tab === 'skin' ? id : equippedSkin,
+            equippedTrail: tab === 'trail' ? id : equippedTrail,
+            equippedEnv: tab === 'environment' ? id : equippedEnv,
+            achievements: useUserStore.getState().achievements.map((a) => ({
+              id: a.id,
+              progress: a.progress,
+              unlocked: a.unlocked,
+            })),
+          });
+        });
       } else {
-        alert(`You need ${cost - stats.sparkCoins} more Spark Coins to unlock this.`);
+        setNotice(`Need ${cost - stats.sparkCoins} more Spark Coins to unlock this.`);
+        setTimeout(() => setNotice(null), 3000);
       }
     }
   };
@@ -50,10 +88,16 @@ export const CosmeticsModal: React.FC<CosmeticsModalProps> = ({ isOpen, onClose 
               </span>
             </div>
           </div>
-          <button onClick={onClose} className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition">
+          <button onClick={onClose} className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer">
             <X className="w-5 h-5" />
           </button>
         </div>
+
+        {notice && (
+          <div className="px-6 py-2 bg-indigo-950/90 border-b border-cyan-500/30 text-xs text-cyan-200 font-semibold text-center animate-fade-in">
+            {notice}
+          </div>
+        )}
 
         {/* Category Tabs */}
         <div className="flex border-b border-slate-800 px-6 pt-3 gap-4">

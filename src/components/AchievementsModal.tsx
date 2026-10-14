@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useUserStore } from '../stores/useUserStore.ts';
 import { useGameStore } from '../stores/useGameStore.ts';
+import { apiClient } from '../services/apiClient.ts';
 import { Trophy, CheckCircle, Calendar, Zap, Sparkles, X } from 'lucide-react';
 
 interface AchievementsModalProps {
@@ -11,6 +12,18 @@ interface AchievementsModalProps {
 export const AchievementsModal: React.FC<AchievementsModalProps> = ({ isOpen, onClose }) => {
   const { achievements, dailyChallenge } = useUserStore();
   const { startGame } = useGameStore();
+
+  useEffect(() => {
+    if (isOpen) {
+      apiClient.fetchDailyChallenge().then((challenge) => {
+        if (challenge) {
+          useUserStore.setState((s) => ({
+            dailyChallenge: { ...s.dailyChallenge, ...challenge },
+          }));
+        }
+      });
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 

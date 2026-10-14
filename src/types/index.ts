@@ -20,6 +20,7 @@ export interface ScoreSubmission {
   durationMs?: number;
   durationSeconds?: number;
   maxCombo: number;
+  distance?: number;
   seed: number;
   eventsCount: number;
   checksum: string;
